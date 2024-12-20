@@ -10,5 +10,7 @@
 8. Run the script: `python main.py`
 
 ## Known Issues:
-1. Convert to PDF takes a long time and the button contuinues to remain pressed. 
+1. If using second monitor, the apps on the second monitor will not be captured and shows a blank screen.
+2. The keystrokes are not recorded correctly. 
+3. The text around the clicked region is not captured correctly. 
 

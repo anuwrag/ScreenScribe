@@ -5,6 +5,7 @@ Pillow
 pynput
 markdown2
 pdfkit
+pyperclip
 wkhtmltopdf
 
 C:\Program Files\wkhtmltopdf\bin

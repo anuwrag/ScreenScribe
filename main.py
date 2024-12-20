@@ -78,23 +78,29 @@ class InstallationRecorder:
                     print("No active window found")
                     return
 
-                # Capture only the active window
+                # Capture only the active window with high DPI awareness
                 screenshot = pyautogui.screenshot(region=(
                     window.left, window.top, 
                     window.width, window.height
                 ))
 
-                # Resize image if too large (max width 800px while maintaining aspect ratio)
-                max_width = 800
+                # Resize image if too large (max width 3840px for 4K while maintaining aspect ratio)
+                max_width = 3840  # 4K width
                 if screenshot.width > max_width:
                     aspect_ratio = screenshot.height / screenshot.width
                     new_width = max_width
                     new_height = int(max_width * aspect_ratio)
                     screenshot = screenshot.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-                # Save screenshot
+                # Save screenshot with maximum quality
                 screenshot_path = os.path.join(self.screenshots_dir, f"step_{self.step_counter}.png")
-                screenshot.save(screenshot_path, optimize=True, quality=85)  # Compress image
+                screenshot.save(
+                    screenshot_path, 
+                    format='PNG',  # Using PNG for lossless quality
+                    optimize=False,  # Disable compression
+                    quality=100,  # Maximum quality
+                    dpi=(600, 600)  # Set to 600 DPI
+                )
 
                 # Adjust click coordinates relative to window
                 relative_x = x - window.left
@@ -112,7 +118,7 @@ class InstallationRecorder:
                 # Get window title
                 window_title = window.title
 
-                # Get clicked element text (using OCR - needs improvement)
+                # Get clicked element text (using OCR)
                 clicked_text = self.get_text_around_click(relative_x, relative_y, screenshot)
 
                 # Write to markdown file
@@ -120,7 +126,9 @@ class InstallationRecorder:
                     f.write(f"## Step {self.step_counter}: {window_title}\n\n")
                     if clicked_text:
                         f.write(f"Clicked on: **{clicked_text}**\n\n")
-                    # Add HTML styling to center and constrain image
+                    if self.last_typed_text:  # Add any pending typed text
+                        f.write(f"**Typed:** {self.last_typed_text}\n\n")
+                        self.last_typed_text = ""  # Clear the buffer
                     f.write(f'<div style="text-align: center;"><img src="{screenshot_path}" style="max-width: 100%; height: auto;"></div>\n\n')
 
                 self.step_counter += 1
@@ -130,30 +138,75 @@ class InstallationRecorder:
                 traceback.print_exc()
 
     def annotate_screenshot(self, image_path, x, y):
-            """Annotates the screenshot with an 'x' at the click location."""
+        """Annotates the screenshot with a visible circle at the click location."""
+        try:
             image = Image.open(image_path)
             draw = ImageDraw.Draw(image)
-            draw.text((x - 5, y - 5), "x", fill="red")  # Using 'x' as annotation
+            
+            # Circle parameters
+            radius = 20
+            circle_color = "red"
+            circle_width = 2
+            
+            # Draw outer circle
+            draw.ellipse([
+                (x - radius, y - radius),
+                (x + radius, y + radius)
+            ], outline=circle_color, width=circle_width)
+            
+            
+            # # Draw crosshair (optional)
+            # line_length = 10
+            # draw.line([(x - line_length, y), (x + line_length, y)], fill=circle_color, width=2)  # Horizontal
+            # draw.line([(x, y - line_length), (x, y + line_length)], fill=circle_color, width=2)  # Vertical
+            
+            # Add semi-transparent fill (optional)
+            circle_fill = (255, 0, 0, 64)  # Red with 25% opacity
+            draw_with_alpha = ImageDraw.Draw(image, 'RGBA')
+            draw_with_alpha.ellipse([
+                (x - radius + 2, y - radius + 2),
+                (x + radius - 2, y + radius - 2)
+            ], fill=circle_fill)
+            
             image.save(image_path)
+            print(f"Successfully annotated screenshot at coordinates ({x}, {y})")
+        except Exception as e:
+            print(f"Error annotating screenshot: {e}")
+            traceback.print_exc()
 
     def get_text_around_click(self, x, y, screenshot):
         """Grabs the text around the click region using pytesseract."""
         try:
             width, height = screenshot.size
-            left = max(0, x - 50)
-            top = max(0, y - 20)
-            right = min(width, x + 50)
-            bottom = min(height, y + 20)
+            # Create a larger region around the click (100x100 pixels)
+            margin = 50
+            left = max(0, x - margin)
+            top = max(0, y - margin)
+            right = min(width, x + margin)
+            bottom = min(height, y + margin)
 
+            # Additional validation to ensure proper coordinates
             if right <= left:
-                right = left + 1
+                right = left + 100  # Add minimum width
+            if bottom <= top:
+                bottom = top + 40   # Add minimum height
 
+            # Crop the region around the click
             cropped_image = screenshot.crop((left, top, right, bottom))
+            
+            # Enhance the image for better OCR
+            enhanced_image = cropped_image.convert('L')  # Convert to grayscale
+            enhanced_image = enhanced_image.point(lambda x: 0 if x < 128 else 255, '1')  # Increase contrast
 
             pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-            text = pytesseract.image_to_string(cropped_image)
-            return text.strip()
+            text = pytesseract.image_to_string(enhanced_image)
+            
+            # Clean up the text
+            cleaned_text = ' '.join(text.split())  # Remove extra whitespace
+            if cleaned_text:
+                print(f"OCR detected text: {cleaned_text}")
+                return cleaned_text
+            return ""
         except Exception as e:
             print(f"Error performing OCR: {e}")
             return ""
@@ -162,22 +215,101 @@ class InstallationRecorder:
         """Handles keyboard press events."""
         if self.recording:
             try:
-                if key == keyboard_listener.Key.enter:
-                    with open(self.markdown_file, "a", encoding='utf-8') as f:
-                        f.write(f"**Typed:** {self.last_typed_text}\n\n")
-                    self.last_typed_text = ""
-                elif key == keyboard_listener.Key.ctrl_l or key == keyboard_listener.Key.ctrl_r:
-                    # Handle Ctrl key combinations (e.g., Ctrl+C, Ctrl+V)
-                    # TODO: Implement logic to detect and record Ctrl key combinations
-                    pass
-                else:
-                    try:
+                # Initialize the text to write to markdown
+                key_text = None
+                
+                # Handle special key combinations
+                if hasattr(key, 'char'):  # Normal character keys
+                    if key.char is not None:
                         self.last_typed_text += key.char
-                    except AttributeError:
-                        # Handle special keys (e.g., backspace, space)
-                        self.last_typed_text += f"[{key.name}]"
+                        print(f"Current text buffer: {self.last_typed_text}")  # Debug output
+                elif key == keyboard_listener.Key.enter:
+                    if self.last_typed_text:  # Only write if there's text to write
+                        with open(self.markdown_file, "a", encoding='utf-8') as f:
+                            f.write(f"**Typed:** {self.last_typed_text}\n\n")
+                        print(f"Recorded text: {self.last_typed_text}")
+                        self.last_typed_text = ""
+                    key_text = "**Pressed:** `Enter`"
+                elif key == keyboard_listener.Key.backspace:
+                    self.last_typed_text = self.last_typed_text[:-1] if self.last_typed_text else ""
+                elif key == keyboard_listener.Key.space:
+                    self.last_typed_text += " "
+                elif key == keyboard_listener.Key.shift:
+                    key_text = "**Pressed:** `Shift`"
+                elif key == keyboard_listener.Key.ctrl:
+                    key_text = "**Pressed:** `Ctrl`"
+                elif key == keyboard_listener.Key.alt:
+                    key_text = "**Pressed:** `Alt`"
+                elif key == keyboard_listener.Key.tab:
+                    key_text = "**Pressed:** `Tab`"
+                elif key == keyboard_listener.Key.esc:
+                    key_text = "**Pressed:** `Esc`"
+                elif key == keyboard_listener.Key.delete:
+                    key_text = "**Pressed:** `Delete`"
+                elif key == keyboard_listener.Key.up:
+                    key_text = "**Pressed:** `↑`"
+                elif key == keyboard_listener.Key.down:
+                    key_text = "**Pressed:** `↓`"
+                elif key == keyboard_listener.Key.left:
+                    key_text = "**Pressed:** `←`"
+                elif key == keyboard_listener.Key.right:
+                    key_text = "**Pressed:** `→`"
+                elif key == keyboard_listener.Key.home:
+                    key_text = "**Pressed:** `Home`"
+                elif key == keyboard_listener.Key.end:
+                    key_text = "**Pressed:** `End`"
+                elif key == keyboard_listener.Key.page_up:
+                    key_text = "**Pressed:** `Page Up`"
+                elif key == keyboard_listener.Key.page_down:
+                    key_text = "**Pressed:** `Page Down`"
+                elif key == keyboard_listener.Key.caps_lock:
+                    key_text = "**Pressed:** `Caps Lock`"
+                elif key == keyboard_listener.Key.cmd:
+                    key_text = "**Pressed:** `Windows Key`"
+                elif key == keyboard_listener.Key.f1:
+                    key_text = "**Pressed:** `F1`"
+                # Add more function keys as needed
+                else:
+                    # Handle any other special keys
+                    key_text = f"**Pressed:** `{str(key)}`"
+
+                # Write to markdown file if we have key text to write
+                if key_text:
+                    with open(self.markdown_file, "a", encoding='utf-8') as f:
+                        f.write(f"{key_text}\n\n")
+                    print(f"Recorded keystroke: {key_text}")  # Debug output
+
+                # Handle special combinations (Ctrl+...)
+                try:
+                    if keyboard.is_pressed('ctrl'):
+                        if keyboard.is_pressed('c'):
+                            import pyperclip
+                            copied_text = pyperclip.paste()
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write(f"**Copied to clipboard:** ```{copied_text}```\n\n")
+                        elif keyboard.is_pressed('v'):
+                            import pyperclip
+                            pasted_text = pyperclip.paste()
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write(f"**Pasted from clipboard:** ```{pasted_text}```\n\n")
+                        elif keyboard.is_pressed('a'):
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write("**Keyboard Shortcut:** `Ctrl+A` (Select All)\n\n")
+                        elif keyboard.is_pressed('x'):
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write("**Keyboard Shortcut:** `Ctrl+X` (Cut)\n\n")
+                        elif keyboard.is_pressed('z'):
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write("**Keyboard Shortcut:** `Ctrl+Z` (Undo)\n\n")
+                        elif keyboard.is_pressed('y'):
+                            with open(self.markdown_file, "a", encoding='utf-8') as f:
+                                f.write("**Keyboard Shortcut:** `Ctrl+Y` (Redo)\n\n")
+                except Exception as e:
+                    print(f"Error handling keyboard shortcuts: {e}")
+
             except Exception as e:
                 print(f"Error recording key press: {e}")
+                traceback.print_exc()
 
     def convert_to_pdf(self):
         """Converts the markdown file to PDF."""
@@ -223,16 +355,18 @@ class InstallationRecorder:
                     
                 config = pdfkit.configuration(wkhtmltopdf=wkhtmltopdf_path)
                 
-                # Add options for better image handling
+                # Update options to use only supported parameters
                 options = {
                     'enable-local-file-access': None,
                     'encoding': 'UTF-8',
-                    'image-quality': 85,
+                    'image-quality': 100,    # Maximum image quality
                     'margin-top': '20mm',
                     'margin-right': '20mm',
                     'margin-bottom': '20mm',
                     'margin-left': '20mm',
-                    'quiet': None
+                    'quiet': None,
+                    'page-size': 'A4', # change to different size if needed
+                    'dpi': 600              # Set DPI to 600
                 }
                 
                 if self.cancel_requested:
@@ -241,10 +375,23 @@ class InstallationRecorder:
                     
                 pdfkit.from_string(html, pdf_file, configuration=config, options=options)
                 print(f"PDF successfully saved to {pdf_file}")
-
+                
+                # Open the PDF after successful conversion
+                os.startfile(pdf_file)  # For Windows
+                
             except Exception as e:
                 print(f"Error converting to PDF: {str(e)}")
+                import traceback
                 traceback.print_exc()
+
+def open_pdf():
+    """Opens the most recently created PDF."""
+    if hasattr(recorder, 'working_directory'):
+        pdf_file = os.path.join(recorder.working_directory, "installation_steps.pdf")
+        if os.path.exists(pdf_file):
+            os.startfile(pdf_file)  # For Windows
+        else:
+            print("PDF file not found")
 
 # Example usage with basic GUI using Tkinter
 import tkinter as tk
@@ -314,6 +461,9 @@ stop_button.pack()
 
 pdf_button = tk.Button(root, text="Convert to PDF", command=convert_to_pdf)
 pdf_button.pack()
+
+open_pdf_button = tk.Button(root, text="Open PDF", command=open_pdf)
+open_pdf_button.pack()
 
 progress_bar = ttk.Progressbar(
     root, 
