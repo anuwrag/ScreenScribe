@@ -5,8 +5,10 @@ import pyautogui
 from PIL import Image, ImageDraw
 from pynput import mouse, keyboard as keyboard_listener
 from markdown2 import markdown
-from pdfkit import from_string
+import pdfkit
 import pytesseract
+import threading
+from tkinter import ttk
 
 class InstallationRecorder:
     def __init__(self):
@@ -18,6 +20,7 @@ class InstallationRecorder:
         self.mouse_listener = None
         self.keyboard_listener = None
         self.last_typed_text = ""
+        self.cancel_requested = False
 
     def set_working_directory(self, directory):
         """Sets the working directory and creates necessary subdirectories with timestamp."""
@@ -30,11 +33,28 @@ class InstallationRecorder:
 
     def start_recording(self):
         """Starts recording mouse clicks, keyboard events, and screenshots."""
+        # Create new timestamped directory before starting
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        self.working_directory = os.path.join(os.path.dirname(self.working_directory), timestamp)
+        os.makedirs(self.working_directory, exist_ok=True)
+        
+        # Create new screenshots directory
+        self.screenshots_dir = os.path.join(self.working_directory, "screenshots")
+        os.makedirs(self.screenshots_dir, exist_ok=True)
+        
+        # Update markdown file path with new timestamp
+        self.markdown_file = os.path.join(self.working_directory, f"installation_steps_{timestamp}.md")
+        
+        # Start recording
         self.recording = True
         self.step_counter = 1
         self.last_typed_text = ""
-        with open(self.markdown_file, "w") as f:
+        
+        # Initialize new markdown file
+        with open(self.markdown_file, "w", encoding='utf-8') as f:
             f.write("# Software Installation Steps\n\n")
+        
+        # Start listeners
         self.mouse_listener = mouse.Listener(on_click=self.on_click)
         self.mouse_listener.start()
         self.keyboard_listener = keyboard_listener.Listener(on_press=self.on_key_press)
@@ -52,61 +72,98 @@ class InstallationRecorder:
         """Handles mouse click events."""
         if pressed and self.recording:
             try:
-                # Capture screenshot
-                screenshot = pyautogui.screenshot()
+                # Get active window info
+                window = pyautogui.getActiveWindow()
+                if window is None:
+                    print("No active window found")
+                    return
+
+                # Capture only the active window
+                screenshot = pyautogui.screenshot(region=(
+                    window.left, window.top, 
+                    window.width, window.height
+                ))
+
+                # Resize image if too large (max width 800px while maintaining aspect ratio)
+                max_width = 800
+                if screenshot.width > max_width:
+                    aspect_ratio = screenshot.height / screenshot.width
+                    new_width = max_width
+                    new_height = int(max_width * aspect_ratio)
+                    screenshot = screenshot.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                # Save screenshot
                 screenshot_path = os.path.join(self.screenshots_dir, f"step_{self.step_counter}.png")
-                screenshot.save(screenshot_path)
+                screenshot.save(screenshot_path, optimize=True, quality=85)  # Compress image
+
+                # Adjust click coordinates relative to window
+                relative_x = x - window.left
+                relative_y = y - window.top
+
+                # Scale coordinates if image was resized
+                if screenshot.width != window.width:
+                    scale_factor = screenshot.width / window.width
+                    relative_x = int(relative_x * scale_factor)
+                    relative_y = int(relative_y * scale_factor)
 
                 # Annotate screenshot
-                self.annotate_screenshot(screenshot_path, x, y)
+                self.annotate_screenshot(screenshot_path, relative_x, relative_y)
 
                 # Get window title
-                window_title = pyautogui.getActiveWindowTitle()
+                window_title = window.title
 
                 # Get clicked element text (using OCR - needs improvement)
-                clicked_text = self.get_text_around_click(x, y)
+                clicked_text = self.get_text_around_click(relative_x, relative_y, screenshot)
 
                 # Write to markdown file
-                with open(self.markdown_file, "a") as f:
+                with open(self.markdown_file, "a", encoding='utf-8') as f:
                     f.write(f"## Step {self.step_counter}: {window_title}\n\n")
                     if clicked_text:
                         f.write(f"Clicked on: **{clicked_text}**\n\n")
-                    f.write(f"![Step {self.step_counter} Screenshot]({screenshot_path})\n\n")
+                    # Add HTML styling to center and constrain image
+                    f.write(f'<div style="text-align: center;"><img src="{screenshot_path}" style="max-width: 100%; height: auto;"></div>\n\n')
 
                 self.step_counter += 1
             except Exception as e:
                 print(f"Error recording click: {e}")
+                import traceback
+                traceback.print_exc()
 
     def annotate_screenshot(self, image_path, x, y):
-        """Annotates the screenshot with a red circle at the click location."""
-        image = Image.open(image_path)
-        draw = ImageDraw.Draw(image)
-        radius = 10
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill="red")
-        image.save(image_path)
+            """Annotates the screenshot with an 'x' at the click location."""
+            image = Image.open(image_path)
+            draw = ImageDraw.Draw(image)
+            draw.text((x - 5, y - 5), "x", fill="red")  # Using 'x' as annotation
+            image.save(image_path)
 
-    def get_text_around_click(self, x, y):
+    def get_text_around_click(self, x, y, screenshot):
         """Grabs the text around the click region using pytesseract."""
         try:
-            screenshot = pyautogui.screenshot()
             width, height = screenshot.size
             left = max(0, x - 50)
             top = max(0, y - 20)
             right = min(width, x + 50)
             bottom = min(height, y + 20)
+
+            if right <= left:
+                right = left + 1
+
             cropped_image = screenshot.crop((left, top, right, bottom))
+
+            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
             text = pytesseract.image_to_string(cropped_image)
             return text.strip()
         except Exception as e:
             print(f"Error performing OCR: {e}")
-            return "" 
+            return ""
 
     def on_key_press(self, key):
         """Handles keyboard press events."""
         if self.recording:
             try:
                 if key == keyboard_listener.Key.enter:
-                    with open(self.markdown_file, "a") as f:
+                    with open(self.markdown_file, "a", encoding='utf-8') as f:
                         f.write(f"**Typed:** {self.last_typed_text}\n\n")
                     self.last_typed_text = ""
                 elif key == keyboard_listener.Key.ctrl_l or key == keyboard_listener.Key.ctrl_r:
@@ -124,15 +181,70 @@ class InstallationRecorder:
 
     def convert_to_pdf(self):
         """Converts the markdown file to PDF."""
+        self.cancel_requested = False
         if self.markdown_file:
             try:
-                with open(self.markdown_file, "r") as f:
-                    html = markdown(f.read())
+                print("Starting PDF conversion...")
+                
+                print("Reading markdown file...")
+                encodings = ['utf-8', 'latin-1', 'cp1252']
+                markdown_content = None
+                
+                for encoding in encodings:
+                    try:
+                        with open(self.markdown_file, "r", encoding=encoding) as f:
+                            markdown_content = f.read()
+                            print(f"Successfully read file using {encoding} encoding")
+                            break
+                    except UnicodeDecodeError:
+                        print(f"Failed to read with {encoding} encoding, trying next...")
+                        continue
+                
+                if markdown_content is None:
+                    raise Exception("Could not read the markdown file with any supported encoding")
+
+                print("Converting markdown to HTML...")
+                # Add CSS for image handling
+                css = """
+                <style>
+                    img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+                    body { max-width: 1000px; margin: 0 auto; padding: 20px; }
+                </style>
+                """
+                html = css + markdown(markdown_content)
+
                 pdf_file = os.path.join(self.working_directory, "installation_steps.pdf")
-                from_string(html, pdf_file)
-                print(f"PDF saved to {pdf_file}")
+                
+                print("Setting up wkhtmltopdf configuration...")
+                wkhtmltopdf_path = 'C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe'
+                if not os.path.exists(wkhtmltopdf_path):
+                    print(f"ERROR: wkhtmltopdf not found at {wkhtmltopdf_path}")
+                    return
+                    
+                config = pdfkit.configuration(wkhtmltopdf=wkhtmltopdf_path)
+                
+                # Add options for better image handling
+                options = {
+                    'enable-local-file-access': None,
+                    'encoding': 'UTF-8',
+                    'image-quality': 85,
+                    'margin-top': '20mm',
+                    'margin-right': '20mm',
+                    'margin-bottom': '20mm',
+                    'margin-left': '20mm',
+                    'quiet': None
+                }
+                
+                if self.cancel_requested:
+                    print("Conversion cancelled by user")
+                    return
+                    
+                pdfkit.from_string(html, pdf_file, configuration=config, options=options)
+                print(f"PDF successfully saved to {pdf_file}")
+
             except Exception as e:
-                print(f"Error converting to PDF: {e}")
+                print(f"Error converting to PDF: {str(e)}")
+                traceback.print_exc()
 
 # Example usage with basic GUI using Tkinter
 import tkinter as tk
@@ -155,8 +267,32 @@ def stop_recording():
     start_button.config(state=tk.NORMAL)
     stop_button.config(state=tk.DISABLED)
 
+def cancel_conversion():
+    recorder.cancel_requested = True
+    pdf_button.config(state=tk.NORMAL, text="Convert to PDF")
+    progress_bar.pack_forget()
+    cancel_button.pack_forget()
+    
 def convert_to_pdf():
-    recorder.convert_to_pdf()
+    def conversion_thread():
+        try:
+            recorder.convert_to_pdf()
+        except Exception as e:
+            print(f"Error in conversion thread: {e}")
+        finally:
+            pdf_button.config(state=tk.NORMAL, text="Convert to PDF")
+            progress_bar.pack_forget()
+            cancel_button.pack_forget()
+            root.update()
+
+    pdf_button.config(state=tk.DISABLED, text="Converting...")
+    progress_bar.pack()
+    cancel_button.pack()
+    root.update()
+
+    thread = threading.Thread(target=conversion_thread)
+    thread.daemon = True
+    thread.start()
 
 recorder = InstallationRecorder()
 
@@ -178,5 +314,19 @@ stop_button.pack()
 
 pdf_button = tk.Button(root, text="Convert to PDF", command=convert_to_pdf)
 pdf_button.pack()
+
+progress_bar = ttk.Progressbar(
+    root, 
+    mode='indeterminate',
+    length=200
+)
+progress_bar.pack_forget()  # Hide initially
+
+cancel_button = tk.Button(root, text="Cancel Conversion", command=cancel_conversion)
+cancel_button.pack()
+cancel_button.pack_forget()  # Hide initially
+
+# Start progress bar animation
+progress_bar.start(10)
 
 root.mainloop()
