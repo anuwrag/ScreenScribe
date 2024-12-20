@@ -27,16 +27,18 @@ ScreenScribe is an easy to use screen recording and annotation tool that capture
  PDF conversion with progress indication
  Quick access to generated documentation
 
-## How to use:
+# How to use:
+
 ### Windows Instructions:
-1. Install Conda Environment: `conda create --name ScreenScribe python=3.12`
-. Activate Conda Environment: `conda activate ScreenScribe`
-. Install requirements.txt: `pip install -r requirements.txt`
-. Install wkhtmltopdf on Windows: `https://wkhtmltopdf.org/downloads.html`
-. Install Tesseract OCR on Windows: `https://github.com/UB-Mannheim/tesseract/wiki`
-. Add Tesseract OCR to PATH: `set PATH=%PATH%;"C:\Program Files\Tesseract-OCR"`    
-. Add wkhtmltopdf to PATH: `set PATH=%PATH%;"C:\Program Files\wkhtmltopdf\bin"`
-. Run the script: `python main.py`
+
+1. Install Conda Envirement: `conda create --name ScreenScribe python=3.12`
+2. Activate Conda Envirement: `conda activate ScreenScribe`
+3. Install requirements.txt: `pip install -r requirements.txt`
+4. Install wkhtmltopdf on Windows: `https://wkhtmltopdf.org/downloads.html`
+5. Install Tesseract OCR on Windows: `https://github.com/UB-Mannheim/tesseract/wiki`
+6. Add Tesseract OCR to PATH: `set PATH=%PATH%;"C:\Program Files\Tesseract-OCR"`    
+7. Add wkhtmltopdf to PATH: `set PATH=%PATH%;"C:\Program Files\wkhtmltopdf\bin"`
+8. Run the script: `python main.py`
 
 ## Output Format
  Timestamped folders for each recording session
@@ -56,18 +58,7 @@ ScreenScribe is an easy to use screen recording and annotation tool that capture
 . Implement cloud storage integration
 . Add custom annotation tools
 
-# How to use:
 
-### Windows Instructions:
-
-1. Install Conda Envirement: `conda create --name ScreenScribe python=3.12`
-2. Activate Conda Envirement: `conda activate ScreenScribe`
-3. Install requirements.txt: `pip install -r requirements.txt`
-4. Install wkhtmltopdf on Windows: `https://wkhtmltopdf.org/downloads.html`
-5. Install Tesseract OCR on Windows: `https://github.com/UB-Mannheim/tesseract/wiki`
-6. Add Tesseract OCR to PATH: `set PATH=%PATH%;"C:\Program Files\Tesseract-OCR"`    
-7. Add wkhtmltopdf to PATH: `set PATH=%PATH%;"C:\Program Files\wkhtmltopdf\bin"`
-8. Run the script: `python main.py`
 
 # Screenshot:
 ![Screenshot](screenshot.png)
