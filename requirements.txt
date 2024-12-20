@@ -1,0 +1,7 @@
+pyautogui
+keyboard
+Pillow
+pynput
+markdown2
+pdfkit
+wkhtmltopdf
