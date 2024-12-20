@@ -1,0 +1,13 @@
+pyautogui
+pytesseract
+keyboard
+Pillow
+pynput
+markdown2
+pdfkit
+pyperclip
+wkhtmltopdf
+
+C:\Program Files\wkhtmltopdf\bin
+C:\Program Files\wkhtmltopdf\bin
+

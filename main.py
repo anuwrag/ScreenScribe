@@ -445,7 +445,7 @@ recorder = InstallationRecorder()
 
 root = tk.Tk()
 root.title("Screen Scribe")
-root.minsize(400, 200)  # Set minimum width to 400px
+root.minsize(400, 230)  # Set minimum width to 400px
 
 working_directory_label = tk.Label(root, text="Select working directory:")
 working_directory_label.pack()

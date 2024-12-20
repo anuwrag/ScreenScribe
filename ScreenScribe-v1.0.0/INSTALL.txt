@@ -1,0 +1,15 @@
+ScreenScribe Installation Instructions:
+
+1. Install Tesseract OCR:
+   - Download from: https://github.com/UB-Mannheim/tesseract/wiki
+   - Install to: C:\Program Files\Tesseract-OCR
+
+2. Install wkhtmltopdf:
+   - Download from: https://wkhtmltopdf.org/downloads.html
+   - Install to: C:\Program Files\wkhtmltopdf
+
+3. Add to System PATH:
+   - C:\Program Files\Tesseract-OCR
+   - C:\Program Files\wkhtmltopdf\bin
+
+4. Run ScreenScribe.exe
