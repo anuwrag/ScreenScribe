@@ -1,7 +1,12 @@
 pyautogui
+pytesseract
 keyboard
 Pillow
 pynput
 markdown2
 pdfkit
 wkhtmltopdf
+
+C:\Program Files\wkhtmltopdf\bin
+C:\Program Files\wkhtmltopdf\bin
+

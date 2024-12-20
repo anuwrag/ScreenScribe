@@ -3,9 +3,10 @@ import time
 import keyboard
 import pyautogui
 from PIL import Image, ImageDraw
-from pynput import mouse
+from pynput import mouse, keyboard as keyboard_listener
 from markdown2 import markdown
 from pdfkit import from_string
+import pytesseract
 
 class InstallationRecorder:
     def __init__(self):
@@ -15,28 +16,37 @@ class InstallationRecorder:
         self.recording = False
         self.step_counter = 1
         self.mouse_listener = None
+        self.keyboard_listener = None
+        self.last_typed_text = ""
 
     def set_working_directory(self, directory):
-        """Sets the working directory and creates necessary subdirectories."""
-        self.working_directory = directory
+        """Sets the working directory and creates necessary subdirectories with timestamp."""
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        self.working_directory = os.path.join(directory, timestamp)
+        os.makedirs(self.working_directory, exist_ok=True)
         self.screenshots_dir = os.path.join(self.working_directory, "screenshots")
         os.makedirs(self.screenshots_dir, exist_ok=True)
-        self.markdown_file = os.path.join(self.working_directory, "installation_steps.md")
+        self.markdown_file = os.path.join(self.working_directory, f"installation_steps_{timestamp}.md")
 
     def start_recording(self):
-        """Starts recording mouse clicks and screenshots."""
+        """Starts recording mouse clicks, keyboard events, and screenshots."""
         self.recording = True
         self.step_counter = 1
+        self.last_typed_text = ""
         with open(self.markdown_file, "w") as f:
             f.write("# Software Installation Steps\n\n")
         self.mouse_listener = mouse.Listener(on_click=self.on_click)
         self.mouse_listener.start()
+        self.keyboard_listener = keyboard_listener.Listener(on_press=self.on_key_press)
+        self.keyboard_listener.start()
 
     def stop_recording(self):
-        """Stops recording mouse clicks."""
+        """Stops recording mouse clicks and keyboard events."""
         if self.mouse_listener:
             self.mouse_listener.stop()
             self.recording = False
+        if self.keyboard_listener:
+            self.keyboard_listener.stop()
 
     def on_click(self, x, y, button, pressed):
         """Handles mouse click events."""
@@ -53,10 +63,14 @@ class InstallationRecorder:
                 # Get window title
                 window_title = pyautogui.getActiveWindowTitle()
 
+                # Get clicked element text (using OCR - needs improvement)
+                clicked_text = self.get_text_around_click(x, y)
+
                 # Write to markdown file
                 with open(self.markdown_file, "a") as f:
                     f.write(f"## Step {self.step_counter}: {window_title}\n\n")
-                    f.write(f"Clicked at position ({x}, {y}).\n\n")
+                    if clicked_text:
+                        f.write(f"Clicked on: **{clicked_text}**\n\n")
                     f.write(f"![Step {self.step_counter} Screenshot]({screenshot_path})\n\n")
 
                 self.step_counter += 1
@@ -71,6 +85,43 @@ class InstallationRecorder:
         draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill="red")
         image.save(image_path)
 
+    def get_text_around_click(self, x, y):
+        """Grabs the text around the click region using pytesseract."""
+        try:
+            screenshot = pyautogui.screenshot()
+            width, height = screenshot.size
+            left = max(0, x - 50)
+            top = max(0, y - 20)
+            right = min(width, x + 50)
+            bottom = min(height, y + 20)
+            cropped_image = screenshot.crop((left, top, right, bottom))
+            text = pytesseract.image_to_string(cropped_image)
+            return text.strip()
+        except Exception as e:
+            print(f"Error performing OCR: {e}")
+            return "" 
+
+    def on_key_press(self, key):
+        """Handles keyboard press events."""
+        if self.recording:
+            try:
+                if key == keyboard_listener.Key.enter:
+                    with open(self.markdown_file, "a") as f:
+                        f.write(f"**Typed:** {self.last_typed_text}\n\n")
+                    self.last_typed_text = ""
+                elif key == keyboard_listener.Key.ctrl_l or key == keyboard_listener.Key.ctrl_r:
+                    # Handle Ctrl key combinations (e.g., Ctrl+C, Ctrl+V)
+                    # TODO: Implement logic to detect and record Ctrl key combinations
+                    pass
+                else:
+                    try:
+                        self.last_typed_text += key.char
+                    except AttributeError:
+                        # Handle special keys (e.g., backspace, space)
+                        self.last_typed_text += f"[{key.name}]"
+            except Exception as e:
+                print(f"Error recording key press: {e}")
+
     def convert_to_pdf(self):
         """Converts the markdown file to PDF."""
         if self.markdown_file:
@@ -78,12 +129,12 @@ class InstallationRecorder:
                 with open(self.markdown_file, "r") as f:
                     html = markdown(f.read())
                 pdf_file = os.path.join(self.working_directory, "installation_steps.pdf")
-                config = pdfkit.configuration(wkhtmltopdf='C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe')  # Replace with your path
-                from_string(html, pdf_file, configuration=config)
+                from_string(html, pdf_file)
                 print(f"PDF saved to {pdf_file}")
             except Exception as e:
                 print(f"Error converting to PDF: {e}")
 
+# Example usage with basic GUI using Tkinter
 import tkinter as tk
 from tkinter import filedialog
 
@@ -92,8 +143,7 @@ def browse_directory():
     if directory:
         working_directory_label.config(text=directory)
         recorder.set_working_directory(directory)
-        # Enable start button after directory is selected
-        start_button.config(state=tk.NORMAL) 
+        start_button.config(state=tk.NORMAL)
 
 def start_recording():
     recorder.start_recording()
@@ -112,6 +162,7 @@ recorder = InstallationRecorder()
 
 root = tk.Tk()
 root.title("Installation Recorder")
+root.minsize(400, 200)  # Set minimum width to 400px
 
 working_directory_label = tk.Label(root, text="Select working directory:")
 working_directory_label.pack()
@@ -119,7 +170,7 @@ working_directory_label.pack()
 browse_button = tk.Button(root, text="Browse", command=browse_directory)
 browse_button.pack()
 
-start_button = tk.Button(root, text="Start Recording", command=start_recording, state=tk.DISABLED)  # Initially disabled
+start_button = tk.Button(root, text="Start Recording", command=start_recording, state=tk.DISABLED)
 start_button.pack()
 
 stop_button = tk.Button(root, text="Stop Recording", command=stop_recording, state=tk.DISABLED)
