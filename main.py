@@ -444,7 +444,7 @@ def convert_to_pdf():
 recorder = InstallationRecorder()
 
 root = tk.Tk()
-root.title("Installation Recorder")
+root.title("Screen Scribe")
 root.minsize(400, 200)  # Set minimum width to 400px
 
 working_directory_label = tk.Label(root, text="Select working directory:")
