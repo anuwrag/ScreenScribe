@@ -1,5 +1,7 @@
 # How to use:
 
+** Currently only works on Windows. **
+
 1. Install Conda Envirement: `conda create --name ScreenScribe python=3.12`
 2. Activate Conda Envirement: `conda activate ScreenScribe`
 3. Install requirements.txt: `pip install -r requirements.txt`
