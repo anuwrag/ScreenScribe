@@ -46,7 +46,7 @@ ScreenScribe is an easy to use screen recording and annotation tool that capture
  Detailed markdown documentation
  Professional PDF conversion
  Organized file structure
-## Known Issues:
+## Known Issues (December 20, 2024):
 . If using second monitor, the apps on the second monitor will not be captured and shows a blank screen.
 . The keystrokes are not recorded correctly. 
 . The text around the clicked region is not captured correctly. 
